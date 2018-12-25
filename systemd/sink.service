@@ -1,0 +1,10 @@
+[Unit]
+Description=two way synchronizer
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/sink
+Restart=always
+
+[Install]
+WantedBy=basic.target
