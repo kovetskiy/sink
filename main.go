@@ -198,7 +198,16 @@ func sync(directory string) error {
 		}
 	}
 
-	cmd = gitCommand(directory, "pull", "--rebase", "origin", "master")
+	cmd = gitCommand(directory, "remote", "update")
+	err = cmd.Run()
+	if err != nil {
+		return karma.Format(
+			err,
+			"unable to update remote",
+		)
+	}
+
+	cmd = gitCommand(directory, "merge", "--no-commit", "origin/master")
 	err = cmd.Run()
 	if err != nil {
 		return karma.Format(
