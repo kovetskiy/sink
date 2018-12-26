@@ -114,6 +114,8 @@ func handleSyncTriggers(
 					"unable to synchronize directory: %s",
 					directory,
 				)
+
+				trigger(triggers)
 			}
 
 			if interval > 0 {
@@ -141,13 +143,7 @@ func handelFileSystemEvents(
 
 			logger.Tracef(nil, "event: %v", event)
 
-			logger.Tracef(nil, "got event, triggering sync event")
-			select {
-			case triggers <- struct{}{}:
-			default:
-				logger.Tracef(nil, "some trigger event already in the queue")
-				// syncer is already running and changes will be synced too
-			}
+			trigger(triggers)
 
 		case err, ok := <-watcher.Errors:
 			if err != nil {
@@ -159,6 +155,16 @@ func handelFileSystemEvents(
 				return
 			}
 		}
+	}
+}
+
+func trigger(triggers chan struct{}) {
+	logger.Tracef(nil, "got event, triggering sync event")
+	select {
+	case triggers <- struct{}{}:
+	default:
+		logger.Tracef(nil, "some trigger event already in the queue")
+		// syncer is already running and changes will be synced too
 	}
 }
 
