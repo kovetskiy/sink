@@ -29,6 +29,7 @@ Usage:
 Options:
   -d --dir <path>       Path of guts to sync. [default: $HOME/.guts/]
   -i --interval <path>  Interval between syncs in seconds. [default: 30]
+  -s --sync             Quit after initial sync.
   --trace               Enable trace messages.
   -h --help             Show this screen.
   --version             Show version.
@@ -84,13 +85,26 @@ func main() {
 	go handleSyncTriggers(directory, interval, triggers)
 
 	logger.Tracef(nil, "syncing directory: %s")
-	err = sync(directory)
-	if err != nil {
-		logger.Errorf(
-			err,
-			"unable to synchronize directory: %s",
-			directory,
-		)
+
+	for {
+		err = sync(directory)
+		if err != nil {
+			logger.Errorf(
+				err,
+				"unable to synchronize directory: %s",
+				directory,
+			)
+
+			if args["--sync"].(bool) {
+				continue
+			}
+		}
+
+		break
+	}
+
+	if args["--sync"].(bool) {
+		os.Exit(0)
 	}
 
 	logger.Infof(nil, "watching for changes in directory: %s", directory)
