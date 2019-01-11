@@ -87,7 +87,7 @@ func main() {
 	logger.Tracef(nil, "syncing directory: %s")
 
 	for {
-		err = sync(directory)
+		err = sync(directory, true)
 		if err != nil {
 			logger.Errorf(
 				err,
@@ -121,7 +121,7 @@ func handleSyncTriggers(
 	for {
 		select {
 		case <-triggers:
-			err := sync(directory)
+			err := sync(directory, false)
 			if err != nil {
 				logger.Errorf(
 					err,
@@ -182,8 +182,12 @@ func trigger(triggers chan struct{}) {
 	}
 }
 
-func sync(directory string) error {
+func sync(directory string, withPrints bool) error {
 	logger.Tracef(nil, "syncing directory: %s", directory)
+
+	if withPrints {
+		logger.Infof(nil, "synchronizing contents of directory %s", directory)
+	}
 
 	cmd := gitCommand(directory, "add", ".")
 	err := cmd.Run()
@@ -212,6 +216,10 @@ func sync(directory string) error {
 		}
 	}
 
+	if withPrints {
+		logger.Infof(nil, "fetching remote repository")
+	}
+
 	cmd = gitCommand(directory, "remote", "update")
 	err = cmd.Run()
 	if err != nil {
@@ -221,6 +229,10 @@ func sync(directory string) error {
 		)
 	}
 
+	if withPrints {
+		logger.Infof(nil, "merging remote changes to local master branch")
+	}
+
 	cmd = gitCommand(directory, "merge", "--no-commit", "origin/master")
 	err = cmd.Run()
 	if err != nil {
@@ -228,6 +240,10 @@ func sync(directory string) error {
 			err,
 			"unable to pull repository changes",
 		)
+	}
+
+	if withPrints {
+		logger.Infof(nil, "pushing local changes to remote repository")
 	}
 
 	cmd = gitCommand(directory, "push", "origin", "master")
