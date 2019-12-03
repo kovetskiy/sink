@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/docopt/docopt-go"
@@ -39,6 +41,10 @@ Options:
 var (
 	logger   *cog.Logger
 	hostname string
+)
+
+var (
+	ErrRejected = errors.New("push rejected")
 )
 
 func init() {
@@ -123,11 +129,13 @@ func handleSyncTriggers(
 		case <-triggers:
 			err := sync(directory, false)
 			if err != nil {
-				logger.Errorf(
-					err,
-					"unable to synchronize directory: %s",
-					directory,
-				)
+				if err != ErrRejected {
+					logger.Errorf(
+						err,
+						"unable to synchronize directory: %s",
+						directory,
+					)
+				}
 
 				trigger(triggers)
 			}
@@ -249,6 +257,10 @@ func sync(directory string, withPrints bool) error {
 	cmd = gitCommand(directory, "push", "origin", "master")
 	err = cmd.Run()
 	if err != nil {
+		if strings.Contains(err.Error(), "[rejected]") {
+			return ErrRejected
+		}
+
 		return karma.Format(
 			err,
 			"unable to push changes",
