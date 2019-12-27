@@ -1,3 +1,5 @@
 /sink
 /sink.test
 /cmd/sink/sink
+/gitmon
+/cmd/gitmon/gitmon
