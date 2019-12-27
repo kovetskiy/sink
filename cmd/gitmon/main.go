@@ -28,7 +28,7 @@ var (
 
 
 Usage:
-  gitmon [options] -L
+  gitmon [options] -L [<hostname>]
   gitmon [options] -A
   gitmon [options]
   gitmon -h | --help
@@ -100,12 +100,21 @@ func main() {
 		}
 	}
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		panic(err)
+	}
+
+	if value, ok := args["<hostname>"].(string); ok {
+		hostname = value
+	}
+
 	if args["-L"].(bool) {
-		listActions(repos, args["--dir"].(string))
+		listActions(repos, args["--dir"].(string), hostname)
 	} else if args["-A"].(bool) {
-		applyActions(repos, args["--dir"].(string))
+		applyActions(repos, args["--dir"].(string), hostname)
 	} else {
-		writeStates(repos, args["--dir"].(string))
+		writeStates(repos, args["--dir"].(string), hostname)
 	}
 }
 
@@ -116,12 +125,7 @@ type Pull struct {
 	CanAuto bool
 }
 
-func getPulls(repos []Repo, dir string) []Pull {
-	hostname, err := os.Hostname()
-	if err != nil {
-		panic(err)
-	}
-
+func getPulls(repos []Repo, dir, hostname string) []Pull {
 	hosts, err := filepath.Glob(filepath.Join(dir, "*"))
 	if err != nil {
 		log.Fatalln(err)
@@ -203,8 +207,8 @@ func getPulls(repos []Repo, dir string) []Pull {
 	return pulls
 }
 
-func applyActions(repos []Repo, dir string) {
-	pulls := getPulls(repos, dir)
+func applyActions(repos []Repo, dir, hostname string) {
+	pulls := getPulls(repos, dir, hostname)
 
 	for _, pull := range pulls {
 		if pull.CanAuto {
@@ -224,7 +228,7 @@ func applyActions(repos []Repo, dir string) {
 
 	log.Println()
 	log.Println("capturing current state")
-	writeStates(repos, dir)
+	writeStates(repos, dir, hostname)
 }
 
 func doGit(dir string, args ...string) {
@@ -243,8 +247,8 @@ func doGit(dir string, args ...string) {
 	}
 }
 
-func listActions(repos []Repo, dir string) {
-	pulls := getPulls(repos, dir)
+func listActions(repos []Repo, dir string, hostname string) {
+	pulls := getPulls(repos, dir, hostname)
 
 	writer := tabwriter.NewWriter(os.Stdout, 0, 1, 1, ' ', 0)
 	for _, pull := range pulls {
@@ -319,12 +323,7 @@ func readStates(dir string, host string) []State {
 	return states
 }
 
-func writeStates(repos []Repo, dir string) {
-	hostname, err := os.Hostname()
-	if err != nil {
-		panic(err)
-	}
-
+func writeStates(repos []Repo, dir, hostname string) {
 	file, err := os.OpenFile(
 		filepath.Join(dir, hostname),
 		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
