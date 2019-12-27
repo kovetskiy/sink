@@ -247,7 +247,11 @@ func writeStates(repos []Repo, dir string) {
 		panic(err)
 	}
 
-	file, err := os.Open(filepath.Join(dir, hostname))
+	file, err := os.OpenFile(
+		filepath.Join(dir, hostname),
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+		0644,
+	)
 	if err != nil {
 		log.Fatalln(err)
 	}
