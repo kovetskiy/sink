@@ -19,7 +19,7 @@ import (
 	"github.com/kovetskiy/ko"
 	"github.com/reconquest/executil-go"
 	"github.com/reconquest/karma-go"
-	git "gopkg.in/src-d/go-git.v4"
+	"gopkg.in/src-d/go-git.v4"
 )
 
 var (
@@ -29,6 +29,7 @@ var (
 
 Usage:
   gitmon [options] -L
+  gitmon [options] -A
   gitmon [options]
   gitmon -h | --help
   gitmon --version
@@ -101,6 +102,8 @@ func main() {
 
 	if args["-L"].(bool) {
 		listActions(repos, args["--dir"].(string))
+	} else if args["-A"].(bool) {
+		applyActions(repos, args["--dir"].(string))
 	} else {
 		writeStates(repos, args["--dir"].(string))
 	}
@@ -109,9 +112,11 @@ func main() {
 type Pull struct {
 	Path    string
 	Reasons []string
+	Clean   bool
+	CanAuto bool
 }
 
-func listActions(repos []Repo, dir string) {
+func getPulls(repos []Repo, dir string) []Pull {
 	hostname, err := os.Hostname()
 	if err != nil {
 		panic(err)
@@ -141,6 +146,12 @@ func listActions(repos []Repo, dir string) {
 		}
 
 		var reasons []string
+
+		if !current.Clean {
+			reasons = append(reasons, fmt.Sprintf("%s: dirty", hostname))
+		}
+
+		var shouldPull bool
 		for _, machine := range hosts {
 			if machine == hostname {
 				continue
@@ -152,6 +163,8 @@ func listActions(repos []Repo, dir string) {
 			}
 
 			if other.Commits > current.Commits {
+				shouldPull = true
+
 				reasons = append(
 					reasons,
 					fmt.Sprintf(
@@ -160,38 +173,103 @@ func listActions(repos []Repo, dir string) {
 						other.Commits-current.Commits,
 					),
 				)
-			}
-
-			if other.Head != current.Head {
+			} else if other.Head != current.Head {
 				reasons = append(
 					reasons,
 					fmt.Sprintf("%s: %q", machine, other.Head),
 				)
 			}
 
-			if !other.Clean {
-				reasons = append(
-					reasons,
-					fmt.Sprintf("%s: dirty", machine),
-				)
-			}
+			// if !other.Clean {
+			//    reasons = append(
+			//        reasons,
+			//        fmt.Sprintf("%s: dirty", machine),
+			//    )
+			//}
 		}
 
 		if len(reasons) > 0 {
 			pull := Pull{
 				Path:    path,
 				Reasons: reasons,
+				Clean:   current.Clean,
+				CanAuto: shouldPull,
 			}
 
 			pulls = append(pulls, pull)
 		}
 	}
 
+	return pulls
+}
+
+func applyActions(repos []Repo, dir string) {
+	pulls := getPulls(repos, dir)
+
+	for _, pull := range pulls {
+		if pull.CanAuto {
+			log.Println(pull.Path)
+			realpath := strings.Replace(pull.Path, "~/", home, 1)
+			if !pull.Clean {
+				doGit(realpath, "stash")
+			}
+
+			doGit(realpath, "pull", "--rebase")
+
+			if !pull.Clean {
+				doGit(realpath, "stash", "pop")
+			}
+		}
+	}
+
+	log.Println()
+	log.Println("capturing current state")
+	writeStates(repos, dir)
+}
+
+func doGit(dir string, args ...string) {
+	log.Printf("  $ git %s", strings.Join(args, " "))
+
+	_, _, err := executil.Run(
+		exec.Command(
+			"git",
+			append(
+				[]string{"-C", dir}, args...,
+			)...,
+		),
+	)
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
+func listActions(repos []Repo, dir string) {
+	pulls := getPulls(repos, dir)
+
 	writer := tabwriter.NewWriter(os.Stdout, 0, 1, 1, ' ', 0)
 	for _, pull := range pulls {
 		fmt.Fprintf(writer, "%s\t%s\n", pull.Path, strings.Join(pull.Reasons, ", "))
 	}
 	writer.Flush()
+
+	canAuto := false
+	for _, pull := range pulls {
+		if pull.CanAuto {
+			canAuto = true
+			break
+		}
+	}
+
+	if canAuto {
+		fmt.Println("\nCan automatically fix the following:")
+		writer = tabwriter.NewWriter(os.Stdout, 0, 1, 1, ' ', 0)
+		for _, pull := range pulls {
+			if pull.CanAuto {
+				fmt.Fprintf(writer, "%s\t%s\n", pull.Path, strings.Join(pull.Reasons, ", "))
+			}
+		}
+		writer.Flush()
+	}
 }
 
 func findState(states []State, path string) *State {
