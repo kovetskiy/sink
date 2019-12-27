@@ -30,7 +30,7 @@ Usage:
 
 Options:
   -d --dir <path>       Path of guts to sync. [default: $HOME/.guts/]
-  -i --interval <path>  Interval between syncs in seconds. [default: 30]
+  -i --interval <path>  Interval between syncs in seconds. [default: 60]
   -s --sync             Quit after initial sync.
   --trace               Enable trace messages.
   -h --help             Show this screen.
@@ -43,9 +43,7 @@ var (
 	hostname string
 )
 
-var (
-	ErrRejected = errors.New("push rejected")
-)
+var ErrRejected = errors.New("push rejected")
 
 func init() {
 	stderr := lorg.NewLog()

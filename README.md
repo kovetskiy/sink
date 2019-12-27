@@ -26,7 +26,7 @@ by default it's 30 seconds.
 ## Installation
 
 ```
-go get github.com/kovetskiy/sink
+go get github.com/kovetskiy/sink/cmd/sink
 ```
 
 Also, you can find the package in Arch Linux User Repository.
