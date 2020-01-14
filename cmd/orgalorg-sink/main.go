@@ -79,11 +79,11 @@ func (handler *Handler) Handle(fields []string) error {
 		return fmt.Errorf("invalid input: %q", fields)
 	}
 
-	if handler.prefix == "" {
-		handler.prefix = fields[0]
-	}
-
 	switch fields[1] {
+	case "HELLO":
+		handler.prefix = fields[0]
+		return nil
+
 	case "START":
 		return handler.start()
 
