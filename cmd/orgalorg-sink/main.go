@@ -88,16 +88,16 @@ func (handler *Handler) Handle(fields []string) error {
 		return handler.start()
 
 	case "SYNC":
-		if len(fields) < 4 {
+		if len(fields) < 3 {
 			return fmt.Errorf("input: %q; expected more fields", fields)
 		}
 
 		var data string
-		if len(fields) == 5 {
-			data = fields[4]
+		if len(fields) == 4 {
+			data = fields[3]
 		}
 
-		return handler.serve(fields[2], fields[3], data)
+		return handler.serve(fields[2], data)
 
 	case "NODE":
 		if len(fields) < 2 {
@@ -108,6 +108,62 @@ func (handler *Handler) Handle(fields []string) error {
 	}
 
 	return fmt.Errorf("unexpected fields: %q", fields)
+}
+
+func (handler *Handler) serve(node string, data string) error {
+	if strings.HasPrefix(data, "EPHEMERA_") {
+		value := strings.TrimPrefix(data, "EPHEMERA_")
+		if value == handler.ephemera {
+			handler.node = node
+
+			if handler.node == handler.nodes[0] {
+				return handler.lead()
+			}
+
+			return nil
+		}
+
+		return nil
+	}
+
+	if node == handler.node {
+		return nil
+	}
+
+	switch data {
+	case "PUSH":
+		err := handler.pull()
+		if err != nil {
+			return karma.Format(
+				err,
+				"can't pull",
+			)
+		}
+
+		err = handler.push()
+		if err != nil {
+			return karma.Format(
+				err,
+				"can't push",
+			)
+		}
+
+		handler.signal("PULL")
+		os.Exit(0)
+
+	case "PULL":
+		err := handler.pull()
+		if err != nil {
+			return karma.Format(
+				err,
+				"can't pull",
+			)
+		}
+
+		os.Exit(0)
+	}
+
+	return nil
 }
 
 func (handler *Handler) start() error {
@@ -185,60 +241,6 @@ func (handler *Handler) push() error {
 		}
 
 		break
-	}
-
-	return nil
-}
-
-func (handler *Handler) serve(cmd string, node string, data string) error {
-	if strings.HasPrefix(cmd, "EPHEMERA_") {
-		value := strings.TrimPrefix(cmd, "EPHEMERA_")
-		if value == handler.ephemera {
-			handler.node = node
-
-			if handler.node == handler.nodes[0] {
-				return handler.lead()
-			}
-
-			return nil
-		}
-	}
-
-	if node == handler.node {
-		return nil
-	}
-
-	switch cmd {
-	case "PUSH":
-		err := handler.pull()
-		if err != nil {
-			return karma.Format(
-				err,
-				"can't pull",
-			)
-		}
-
-		err = handler.push()
-		if err != nil {
-			return karma.Format(
-				err,
-				"can't push",
-			)
-		}
-
-		handler.signal("PULL")
-		os.Exit(0)
-
-	case "PULL":
-		err := handler.pull()
-		if err != nil {
-			return karma.Format(
-				err,
-				"can't pull",
-			)
-		}
-
-		os.Exit(0)
 	}
 
 	return nil
