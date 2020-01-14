@@ -105,6 +105,9 @@ func (handler *Handler) Handle(fields []string) error {
 		}
 
 		return handler.writeNode(fields[2])
+
+	case "CRASH":
+		log.Fatalf(nil, "other node crashed")
 	}
 
 	return fmt.Errorf("unexpected fields: %q", fields)
@@ -215,6 +218,7 @@ func (handler *Handler) push() error {
 			return karma.Format(err, "unable to git add")
 		}
 
+		cmd = git(handler.dir, "commit", "-m", hostname+": auto commit")
 		stdout, _, err := cmd.Output()
 		if err != nil {
 			if !bytes.Contains(
