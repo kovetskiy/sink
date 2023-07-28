@@ -3,14 +3,17 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/docopt/docopt-go"
 	"github.com/fsnotify/fsnotify"
+	"github.com/ghodss/yaml"
 	"github.com/kovetskiy/lorg"
 	"github.com/reconquest/cog"
 	"github.com/reconquest/karma-go"
@@ -195,6 +198,46 @@ func sync(directory string, withPrints bool) error {
 		logger.Infof(nil, "synchronizing contents of directory %s", directory)
 	}
 
+	sinkfile, err := readSinkfile(directory)
+	if err != nil {
+		return karma.Format(
+			err,
+			"unable to read sinkfile",
+		)
+	}
+
+	for relative, absolute := range sinkfile {
+		src := os.ExpandEnv(absolute)
+		dst := filepath.Join(directory, relative)
+
+		_, err := os.Stat(src)
+		if err != nil {
+			logger.Errorf(err, "sinkfile: %s", src)
+			continue
+		}
+
+		dstDir := filepath.Dir(dst)
+		if _, err := os.Stat(dstDir); os.IsNotExist(err) {
+			err = os.MkdirAll(dstDir, 0755)
+			if err != nil {
+				return karma.Format(
+					err,
+					"unable to create directory: %s",
+					dstDir,
+				)
+			}
+		}
+
+		if withPrints {
+			logger.Infof(nil, "sync %s -> %s", src, dst)
+		}
+
+		cmd := lexec.NewExec(
+			lexec.Loggerf(logger.Log.Debugf),
+			exec.Command("cp", "-r", "-v", src, dst),
+		)
+	}
+
 	cmd := gitCommand(directory, "add", ".")
 	err := cmd.Run()
 	if err != nil {
@@ -273,4 +316,36 @@ func gitCommand(directory string, values ...string) *lexec.Execution {
 		lexec.Loggerf(logger.Log.Debugf),
 		exec.Command("git", append([]string{"-C", directory}, values...)...),
 	)
+}
+
+func readSinkfile(dir string) (map[string]string, error) {
+	files := map[string]string{}
+
+	file, err := os.Open(filepath.Join(dir, "Sinkfile"))
+	if err != nil {
+		return nil, karma.Format(
+			err,
+			"unable to open Sinkfile",
+		)
+	}
+
+	defer file.Close()
+
+	yamlData, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, karma.Format(
+			err,
+			"unable to read Sinkfile",
+		)
+	}
+
+	err = yaml.Unmarshal(yamlData, &files)
+	if err != nil {
+		return nil, karma.Format(
+			err,
+			"unable to parse Sinkfile",
+		)
+	}
+
+	return files, nil
 }
