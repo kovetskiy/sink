@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -31,6 +32,7 @@ Usage:
 Options:
   -d --dir <path>       Path of guts to sync. [default: $HOME/.guts/]
   -i --interval <path>  Interval between syncs in seconds. [default: 60]
+  -k --ssh-key <path>   Path to SSH key. [default: $HOME/.ssh/id_rsa].
   -s --sync             Quit after initial sync.
   --trace               Enable trace messages.
   -h --help             Show this screen.
@@ -86,12 +88,12 @@ func main() {
 	triggers := make(chan struct{}, 1)
 
 	go handelFileSystemEvents(directory, watcher, triggers, done)
-	go handleSyncTriggers(directory, interval, triggers)
+	go handleSyncTriggers(directory, args["--ssh-key"].(string), interval, triggers)
 
 	logger.Tracef(nil, "syncing directory: %s")
 
 	for {
-		err = sync(directory, true)
+		err = sync(directory, args["--ssh-key"].(string), true)
 		if err != nil {
 			logger.Errorf(
 				err,
@@ -119,13 +121,14 @@ func main() {
 
 func handleSyncTriggers(
 	directory string,
+	sshKey string,
 	interval int64,
 	triggers chan struct{},
 ) {
 	for {
 		select {
 		case <-triggers:
-			err := sync(directory, false)
+			err := sync(directory, sshKey, false)
 			if err != nil {
 				if err != ErrRejected {
 					logger.Errorf(
@@ -188,14 +191,17 @@ func trigger(triggers chan struct{}) {
 	}
 }
 
-func sync(directory string, withPrints bool) error {
+func sync(directory string, sshKey string, withPrints bool) error {
 	logger.Tracef(nil, "syncing directory: %s", directory)
 
 	if withPrints {
 		logger.Infof(nil, "synchronizing contents of directory %s", directory)
 	}
 
-	cmd := gitCommand(directory, "add", ".")
+	cmd := gitCommand(GitCommandArgs{
+		Directory: directory,
+		SSHKey:    sshKey,
+	}, "add", ".")
 	err := cmd.Run()
 	if err != nil {
 		return karma.Format(
@@ -205,7 +211,10 @@ func sync(directory string, withPrints bool) error {
 	}
 
 	cmd = gitCommand(
-		directory,
+		GitCommandArgs{
+			Directory: directory,
+			SSHKey:    sshKey,
+		},
 		"commit", "-m", hostname+": automatic commit",
 	)
 
@@ -226,7 +235,10 @@ func sync(directory string, withPrints bool) error {
 		logger.Infof(nil, "fetching remote repository")
 	}
 
-	cmd = gitCommand(directory, "remote", "update")
+	cmd = gitCommand(GitCommandArgs{
+		Directory: directory,
+		SSHKey:    sshKey,
+	}, "remote", "update")
 	err = cmd.Run()
 	if err != nil {
 		return karma.Format(
@@ -239,7 +251,10 @@ func sync(directory string, withPrints bool) error {
 		logger.Infof(nil, "merging remote changes to local master branch")
 	}
 
-	cmd = gitCommand(directory, "merge", "--no-commit", "origin/master")
+	cmd = gitCommand(GitCommandArgs{
+		Directory: directory,
+		SSHKey:    sshKey,
+	}, "merge", "--no-commit", "origin/master")
 	err = cmd.Run()
 	if err != nil {
 		return karma.Format(
@@ -252,7 +267,10 @@ func sync(directory string, withPrints bool) error {
 		logger.Infof(nil, "pushing local changes to remote repository")
 	}
 
-	cmd = gitCommand(directory, "push", "origin", "master")
+	cmd = gitCommand(GitCommandArgs{
+		Directory: directory,
+		SSHKey:    sshKey,
+	}, "push", "origin", "master")
 	err = cmd.Run()
 	if err != nil {
 		if strings.Contains(err.Error(), "[rejected]") {
@@ -268,9 +286,31 @@ func sync(directory string, withPrints bool) error {
 	return nil
 }
 
-func gitCommand(directory string, values ...string) *lexec.Execution {
-	return lexec.NewExec(
-		lexec.Loggerf(logger.Log.Debugf),
-		exec.Command("git", append([]string{"-C", directory}, values...)...),
+type GitCommandArgs struct {
+	SSHKey    string
+	Directory string
+}
+
+func gitCommand(
+	args GitCommandArgs,
+	values ...string,
+) *lexec.Execution {
+	cmdline := exec.Command(
+		"git",
+		append([]string{"-C", args.Directory}, values...)...,
 	)
+
+	cmdline.Env = os.Environ()
+
+	cmdline.Env = append(
+		cmdline.Env,
+		fmt.Sprintf("GIT_SSH_COMMAND=ssh -i %s", args.SSHKey),
+	)
+
+	cmd := lexec.NewExec(
+		lexec.Loggerf(logger.Log.Debugf),
+		cmdline,
+	)
+
+	return cmd
 }
